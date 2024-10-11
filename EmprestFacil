@@ -1,0 +1,251 @@
+// pages/_app.js
+import '@/styles/globals.css';
+
+export default function App({ Component, pageProps }) {
+  return <Component {...pageProps} />;
+}
+
+// pages/index.js
+import { useState, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { PlusCircle } from 'lucide-react';
+import EmprestimoItem from '@/components/EmprestimoItem';
+import { useForm } from 'react-hook-form';
+import { useRouter } from 'next/router';
+import { signIn, signOut, useSession } from 'next-auth/react';
+import { toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+
+toast.configure();
+
+export default function Home() {
+  const [emprestimos, setEmprestimos] = useState([]);
+  const { register, handleSubmit, reset, formState: { errors } } = useForm();
+  const { data: session } = useSession();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!session) {
+      router.push('/login');
+      return;
+    }
+
+    const fetchLoans = async () => {
+      try {
+        const res = await fetch('/api/emprestimos');
+        if (!res.ok) throw new Error('Erro ao buscar empréstimos');
+        const data = await res.json();
+        setEmprestimos(data);
+      } catch (error) {
+        console.error('Error fetching loans:', error);
+        toast.error('Erro ao buscar empréstimos. Tente novamente mais tarde.');
+      }
+    };
+
+    fetchLoans();
+  }, [session]);
+
+  const handleQuitar = async (id) => {
+    try {
+      const res = await fetch(`/api/emprestimos/${id}/quitar`, { method: 'PUT' });
+      if (res.ok) {
+        setEmprestimos(emprestimos.map(emp => emp.id === id ? { ...emp, status: 'Quitado' } : emp));
+        toast.success('Empréstimo quitado com sucesso!');
+      } else {
+        throw new Error('Erro ao quitar empréstimo');
+      }
+    } catch (error) {
+      console.error('Error updating loan:', error);
+      toast.error('Erro ao quitar empréstimo. Tente novamente.');
+    }
+  };
+
+  const handleExcluir = async (id) => {
+    try {
+      const res = await fetch(`/api/emprestimos/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setEmprestimos(emprestimos.filter(emp => emp.id !== id));
+        toast.success('Empréstimo excluído com sucesso!');
+      } else {
+        throw new Error('Erro ao excluir empréstimo');
+      }
+    } catch (error) {
+      console.error('Error deleting loan:', error);
+      toast.error('Erro ao excluir empréstimo. Tente novamente.');
+    }
+  };
+
+  const onSubmit = async (data) => {
+    try {
+      const res = await fetch('/api/emprestimos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        const newEmprestimo = await res.json();
+        setEmprestimos([...emprestimos, newEmprestimo]);
+        reset();
+        toast.success('Empréstimo criado com sucesso!');
+      } else {
+        throw new Error('Erro ao criar empréstimo');
+      }
+    } catch (error) {
+      console.error('Error creating loan:', error);
+      toast.error('Erro ao criar empréstimo. Tente novamente.');
+    }
+  };
+
+  if (!session) {
+    return (
+      <div className="container mx-auto p-4">
+        <h1 className="text-2xl font-bold mb-6">EmprestaSimplesApp</h1>
+        <Button onClick={() => signIn()} className="w-full mt-4">
+          Entrar
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-6">EmprestaSimplesApp</h1>
+
+      {/* Formulário para criar novo empréstimo */}
+      <form onSubmit={handleSubmit(onSubmit)} className="mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="tomador" className="block text-sm font-medium text-gray-700">Tomador:</label>
+            <input 
+              type="text" 
+              id="tomador" 
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50" 
+              {...register('tomador', { required: 'Nome do tomador é obrigatório' })} 
+            />
+            {errors.tomador && <p className="text-red-500 text-sm mt-1">{errors.tomador.message}</p>}
+          </div>
+          <div>
+            <label htmlFor="valor" className="block text-sm font-medium text-gray-700">Valor:</label>
+            <input 
+              type="number" 
+              id="valor" 
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50" 
+              {...register('valor', { required: 'Valor é obrigatório', min: { value: 1, message: 'Valor deve ser maior que zero' } })} 
+            />
+            {errors.valor && <p className="text-red-500 text-sm mt-1">{errors.valor.message}</p>}
+          </div>
+          <div>
+            <label htmlFor="taxa" className="block text-sm font-medium text-gray-700">Taxa:</label>
+            <input 
+              type="number" 
+              id="taxa" 
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50" 
+              {...register('taxa')} 
+            />
+          </div>
+          <div>
+            <label htmlFor="parcelas" className="block text-sm font-medium text-gray-700">Parcelas:</label>
+            <input 
+              type="number" 
+              id="parcelas" 
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50" 
+              {...register('parcelas')} 
+            />
+          </div>
+          <div>
+            <label htmlFor="vencimento" className="block text-sm font-medium text-gray-700">Vencimento:</label>
+            <input 
+              type="date" 
+              id="vencimento" 
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50" 
+              {...register('vencimento')} 
+            />
+          </div>
+        </div>
+        <Button type="submit" className="w-full mt-4">
+          <PlusCircle className="mr-2 h-4 w-4" />
+          Novo Empréstimo
+        </Button>
+      </form>
+
+      {/* Lista de empréstimos */}
+      {emprestimos.length > 0 ? (
+        emprestimos.map(emprestimo => (
+          <EmprestimoItem
+            key={emprestimo.id}
+            emprestimo={emprestimo}
+            onQuitar={handleQuitar}
+            onExcluir={handleExcluir}
+          />
+        ))
+      ) : (
+        <p>Nenhum empréstimo cadastrado.</p>
+      )}
+      <Button onClick={() => signOut()} className="w-full mt-4">
+        Sair
+      </Button>
+    </div>
+  );
+}
+
+// pages/api/emprestimos.js
+export default function handler(req, res) {
+  if (req.method === 'GET') {
+    const emprestimos = [
+      { id: '1', tomador: 'João Silva', valor: 1000, taxa: 5, parcelas: 12, vencimento: '2024-10-15', status: 'Ativo' },
+      { id: '2', tomador: 'Maria Santos', valor: 2000, taxa: 3, parcelas: 24, vencimento: '2024-11-01', status: 'Quitado' },
+    ];
+    res.status(200).json(emprestimos);
+  } else if (req.method === 'POST') {
+    const novoEmprestimo = { id: Date.now().toString(), ...req.body };
+    res.status(201).json(novoEmprestimo);
+  }
+}
+
+// components/EmprestimoItem.js
+import { Card, CardContent, CardFooter } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Trash2, CheckCircle } from 'lucide-react';
+
+const formatCurrency = (value) => {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+};
+
+const formatDate = (date) => {
+  return date ? new Date(date).toLocaleDateString('pt-BR') : 'Data não definida';
+};
+
+export default function EmprestimoItem({ emprestimo, onQuitar, onExcluir }) {
+  return (
+    <Card className="mb-4">
+      <CardContent className="p-4">
+        <h3 className="text-lg font-bold mb-2">{emprestimo.tomador || 'Sem nome'}</h3>
+        <p className="text-sm text-gray-600 mb-1">Valor: {formatCurrency(emprestimo.valor || 0)}</p>
+        <p className="text-sm text-gray-600 mb-1">Taxa: {emprestimo.taxa !== undefined ? emprestimo.taxa + '%' : 'N/A'}</p>
+        <p className="text-sm text-gray-600 mb-1">Parcelas: {emprestimo.parcelas || 'N/A'}</p>
+        <p className="text-sm text-gray-600 mb-2">Vencimento: {formatDate(emprestimo.vencimento)}</p>
+        <p className={`text-sm ${emprestimo.status === 'Quitado' ? 'text-green-600' : 'text-orange-600'} mb-3`}>
+          Status: {emprestimo.status || 'Não definido'}
+        </p>
+      </CardContent>
+      <CardFooter className="flex justify-between">
+        <Button
+          variant="outline"
+          className="flex-1 mr-2"
+          onClick={() => onQuitar(emprestimo.id)}
+        >
+          <CheckCircle className="mr-2 h-4 w-4" />
+          Quitar
+        </Button>
+        <Button
+          variant="destructive"
+          className="flex-1 ml-2"
+          onClick={() => onExcluir(emprestimo.id)}
+        >
+          <Trash2 className="mr-2 h-4 w-4" />
+          Excluir
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+}
