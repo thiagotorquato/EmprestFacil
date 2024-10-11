@@ -15,6 +15,8 @@ import { useRouter } from 'next/router';
 import { signIn, signOut, useSession } from 'next-auth/react';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { fetchLoans, quitarEmprestimo, excluirEmprestimo, criarEmprestimo } from '@/services/loanService';
+import CompoundInterestCalculator from '@/components/CompoundInterestCalculator';
 
 toast.configure();
 
@@ -30,11 +32,9 @@ export default function Home() {
       return;
     }
 
-    const fetchLoans = async () => {
+    const fetchLoansData = async () => {
       try {
-        const res = await fetch('/api/emprestimos');
-        if (!res.ok) throw new Error('Erro ao buscar empréstimos');
-        const data = await res.json();
+        const data = await fetchLoans();
         setEmprestimos(data);
       } catch (error) {
         console.error('Error fetching loans:', error);
@@ -42,18 +42,14 @@ export default function Home() {
       }
     };
 
-    fetchLoans();
+    fetchLoansData();
   }, [session]);
 
   const handleQuitar = async (id) => {
     try {
-      const res = await fetch(`/api/emprestimos/${id}/quitar`, { method: 'PUT' });
-      if (res.ok) {
-        setEmprestimos(emprestimos.map(emp => emp.id === id ? { ...emp, status: 'Quitado' } : emp));
-        toast.success('Empréstimo quitado com sucesso!');
-      } else {
-        throw new Error('Erro ao quitar empréstimo');
-      }
+      await quitarEmprestimo(id);
+      setEmprestimos(emprestimos.map(emp => emp.id === id ? { ...emp, status: 'Quitado' } : emp));
+      toast.success('Empréstimo quitado com sucesso!');
     } catch (error) {
       console.error('Error updating loan:', error);
       toast.error('Erro ao quitar empréstimo. Tente novamente.');
@@ -62,13 +58,9 @@ export default function Home() {
 
   const handleExcluir = async (id) => {
     try {
-      const res = await fetch(`/api/emprestimos/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        setEmprestimos(emprestimos.filter(emp => emp.id !== id));
-        toast.success('Empréstimo excluído com sucesso!');
-      } else {
-        throw new Error('Erro ao excluir empréstimo');
-      }
+      await excluirEmprestimo(id);
+      setEmprestimos(emprestimos.filter(emp => emp.id !== id));
+      toast.success('Empréstimo excluído com sucesso!');
     } catch (error) {
       console.error('Error deleting loan:', error);
       toast.error('Erro ao excluir empréstimo. Tente novamente.');
@@ -77,19 +69,10 @@ export default function Home() {
 
   const onSubmit = async (data) => {
     try {
-      const res = await fetch('/api/emprestimos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      if (res.ok) {
-        const newEmprestimo = await res.json();
-        setEmprestimos([...emprestimos, newEmprestimo]);
-        reset();
-        toast.success('Empréstimo criado com sucesso!');
-      } else {
-        throw new Error('Erro ao criar empréstimo');
-      }
+      const newEmprestimo = await criarEmprestimo(data);
+      setEmprestimos([...emprestimos, newEmprestimo]);
+      reset();
+      toast.success('Empréstimo criado com sucesso!');
     } catch (error) {
       console.error('Error creating loan:', error);
       toast.error('Erro ao criar empréstimo. Tente novamente.');
@@ -184,6 +167,12 @@ export default function Home() {
       <Button onClick={() => signOut()} className="w-full mt-4">
         Sair
       </Button>
+
+      {/* Calculadora de Juros Compostos */}
+      <div className="mt-6">
+        <h2 className="text-xl font-bold mb-4">Calculadora de Juros Compostos</h2>
+        <CompoundInterestCalculator />
+      </div>
     </div>
   );
 }
@@ -247,5 +236,104 @@ export default function EmprestimoItem({ emprestimo, onQuitar, onExcluir }) {
         </Button>
       </CardFooter>
     </Card>
+  );
+}
+
+// services/loanService.js
+export const fetchLoans = async () => {
+  const res = await fetch('/api/emprestimos');
+  if (!res.ok) throw new Error('Erro ao buscar empréstimos');
+  return res.json();
+};
+
+export const quitarEmprestimo = async (id) => {
+  const res = await fetch(`/api/emprestimos/${id}/quitar`, { method: 'PUT' });
+  if (!res.ok) throw new Error('Erro ao quitar empréstimo');
+  return res.json();
+};
+
+export const excluirEmprestimo = async (id) => {
+  const res = await fetch(`/api/emprestimos/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Erro ao excluir empréstimo');
+  return res.json();
+};
+
+export const criarEmprestimo = async (data) => {
+  const res = await fetch('/api/emprestimos', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Erro ao criar empréstimo');
+  return res.json();
+};
+
+// components/CompoundInterestCalculator.js
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+
+export default function CompoundInterestCalculator() {
+  const [principal, setPrincipal] = useState('');
+  const [rate, setRate] = useState('');
+  const [time, setTime] = useState('');
+  const [amount, setAmount] = useState(null);
+
+  const calculateInterest = () => {
+    const principalAmount = parseFloat(principal);
+    const interestRate = parseFloat(rate) / 100;
+    const timePeriod = parseFloat(time);
+
+    if (isNaN(principalAmount) || isNaN(interestRate) || isNaN(timePeriod)) {
+      alert('Por favor, insira valores válidos.');
+      return;
+    }
+
+    const compoundAmount = principalAmount * Math.pow((1 + interestRate), timePeriod);
+    setAmount(compoundAmount.toFixed(2));
+  };
+
+  return (
+    <div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label htmlFor="principal" className="block text-sm font-medium text-gray-700">Principal:</label>
+          <input 
+            type="number" 
+            id="principal" 
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+            value={principal}
+            onChange={(e) => setPrincipal(e.target.value)}
+          />
+        </div>
+        <div>
+          <label htmlFor="rate" className="block text-sm font-medium text-gray-700">Taxa de Juros (%):</label>
+          <input 
+            type="number" 
+            id="rate" 
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+            value={rate}
+            onChange={(e) => setRate(e.target.value)}
+          />
+        </div>
+        <div>
+          <label htmlFor="time" className="block text-sm font-medium text-gray-700">Tempo (anos):</label>
+          <input 
+            type="number" 
+            id="time" 
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+            value={time}
+            onChange={(e) => setTime(e.target.value)}
+          />
+        </div>
+      </div>
+      <Button onClick={calculateInterest} className="mt-4">
+        Calcular
+      </Button>
+      {amount && (
+        <div className="mt-4">
+          <p className="text-lg">Montante Final: <strong>{amount}</strong></p>
+        </div>
+      )}
+    </div>
   );
 }
